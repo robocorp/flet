@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "flet"
-version = "0.1.0"
+name = "robocorp-flet"
+version = "0.4.2.1"
 description = "Flet for Python - easily build interactive multi-platform apps in Python"
 authors = ["Appveyor Systems Inc. <hello@flet.dev>"]
 license = "Apache-2.0"
@@ -16,7 +16,7 @@ repository = "https://github.com/flet-dev/flet"
 documentation = "https://flet.dev/docs"
 
 [tool.poetry.dependencies]
-flet-core = "0.1.0"
+robocorp-flet-core = "0.4.2"
 python = "^3.7"
 typing-extensions = { version = "^4.4.0", python = "<3.8" }
 websocket-client = "^1.4.2"

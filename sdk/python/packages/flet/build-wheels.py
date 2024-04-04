@@ -26,21 +26,6 @@ packages = {
         "wheel_tags": ["py3-none-win_amd64"],
         "file_suffix": "py3-none-win_amd64",
     },
-    "Windows x86": {
-        "fletd_asset": "windows_386",
-        "fletd_exec": "fletd.exe",
-        "flet_client_job": "Build Flet for Windows",
-        "flet_client_artifact": "flet_windows",
-        "flet_client_filename": "flet-windows.zip",
-        "wheel_tags": ["py3-none-win32"],
-        "file_suffix": "py3-none-win32",
-    },
-    "Linux amd64 (Alpine)": {
-        "fletd_asset": "linux_amd64",
-        "fletd_exec": "fletd",
-        "wheel_tags": ["py3-none-musllinux_1_2_x86_64"],
-        "file_suffix": "py3-none-musllinux_1_2_x86_64",
-    },
     "Linux amd64": {
         "fletd_asset": "linux_amd64",
         "fletd_exec": "fletd",
@@ -64,15 +49,6 @@ packages = {
             "py3-none-manylinux2014_aarch64",
         ],
         "file_suffix": "py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64",
-    },
-    "Linux arm": {
-        "fletd_asset": "linux_arm_7",
-        "fletd_exec": "fletd",
-        "wheel_tags": [
-            "py3-none-manylinux_2_17_armv7l",
-            "py3-none-manylinux2014_armv7l",
-        ],
-        "file_suffix": "py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l",
     },
     "macOS amd64": {
         "fletd_asset": "darwin_amd64",
@@ -121,6 +97,17 @@ def download_artifact_by_name(jobId, artifact_name, dest_file):
             print(f"Downloading {flet_url}...")
             urllib.request.urlretrieve(flet_url, dest_file)
             return
+        
+def copy_flet_binaries(source_dir, exec_filename, dest_file, client_filename=None, client_target_filename=None):
+    # Copy the fletd binary
+    shutil.copy2(os.path.join(source_dir, exec_filename), dest_file)
+    st = os.stat(dest_file)
+    os.chmod(dest_file, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    
+    # Copy the Flet client binary if provided
+    if client_filename:
+        shutil.copy2(os.path.join(source_dir, client_filename), client_target_filename)
+
 
 
 def get_flet_server_job_ids():
@@ -183,10 +170,10 @@ if len(whl_files) == 0:
 orig_whl = whl_files[0]
 
 package_version = os.path.basename(orig_whl).split("-")[1]
-get_flet_server_job_ids()
+# get_flet_server_job_ids()
 
 print("package_version", package_version)
-print("flet_server_jobId", build_jobs[fletd_job_name])
+# print("flet_server_jobId", build_jobs[fletd_job_name])
 
 for name, package in packages.items():
     print(f"Building {name}...")
@@ -198,13 +185,13 @@ for name, package in packages.items():
 
     # read original WHEEL file omitting tags
     wheel_path = str(
-        unpacked_whl.joinpath(f"flet-{package_version}.dist-info", "WHEEL")
+        unpacked_whl.joinpath(f"robocorp_flet-{package_version}.dist-info", "WHEEL")
     )
     wheel_lines = []
 
     with open(wheel_path, "r") as f:
         for line in f.readlines():
-            if not "Tag: " in line:
+            if "Tag: " not in line:
                 wheel_lines.append(line)
 
     # print(wheel_lines)
@@ -213,27 +200,32 @@ for name, package in packages.items():
     bin_path = unpacked_whl.joinpath("flet", "bin")
     bin_path.mkdir(exist_ok=True)
 
-    # download Fletd
+    source_bin_path = pathlib.Path("./bin")
+
+    # copy Fletd
     asset = package["fletd_asset"]
     exec_filename = package["fletd_exec"]
-    exec_path = str(bin_path.joinpath(exec_filename))
-    download_flet_server(build_jobs[fletd_job_name], asset, exec_filename, exec_path)
+    if exec_filename == "fletd":
+        source_file_fletd = f"{asset}-{exec_filename}"
+    else:
+        source_file_fletd = exec_filename
+    exec_path = str(bin_path.joinpath(source_file_fletd))
+    # download_flet_server(build_jobs[fletd_job_name], asset, exec_filename, exec_path)
 
-    # download Flet client
-    flet_client_job = package.get("flet_client_job")
-    flet_client_artifact = package.get("flet_client_artifact")
+    # copy Flet client
     flet_client_filename = package.get("flet_client_filename")
-    if flet_client_job:
-        client_arch_path = str(bin_path.joinpath(flet_client_filename))
-        download_artifact_by_name(
-            build_jobs[flet_client_job], flet_client_artifact, client_arch_path
-        )
+    client_arch_path = str(bin_path.joinpath(flet_client_filename))
+    copy_flet_binaries(source_bin_path, source_file_fletd, exec_path, flet_client_filename, client_arch_path)
 
-        # unpack zip only; tar.gz stays as is and unpacked during runtime
-        if flet_client_filename.endswith(".zip"):
-            with zipfile.ZipFile(client_arch_path, "r") as zip_arch:
-                zip_arch.extractall(bin_path)
-            os.remove(client_arch_path)
+    # download_artifact_by_name(
+    #     build_jobs[flet_client_job], flet_client_artifact, client_arch_path
+    # )
+
+    # unpack zip only; tar.gz stays as is and unpacked during runtime
+    if flet_client_filename.endswith(".zip"):
+        with zipfile.ZipFile(client_arch_path, "r") as zip_arch:
+            zip_arch.extractall(bin_path)
+        os.remove(client_arch_path)
 
     # update WHEEL file
     for tag in package["wheel_tags"]:
@@ -246,14 +238,14 @@ for name, package in packages.items():
     # update and save RECORD
     record_lines = rehash_record_lines(str(unpacked_whl))
     record_path = str(
-        unpacked_whl.joinpath(f"flet-{package_version}.dist-info", "RECORD")
+        unpacked_whl.joinpath(f"robocorp_flet-{package_version}.dist-info", "RECORD")
     )
     with open(record_path, "w") as f:
         f.writelines(record_lines)
 
     # zip
     suffix = package["file_suffix"]
-    zip_filename = current_dir.joinpath("dist", f"flet-{package_version}-{suffix}")
+    zip_filename = current_dir.joinpath("dist", f"robocorp_flet-{package_version}-{suffix}")
     shutil.make_archive(zip_filename, "zip", unpacked_whl)
     os.rename(f"{zip_filename}.zip", f"{zip_filename}.whl")
 
